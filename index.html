@@ -315,7 +315,7 @@ tbody tr:hover {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-top: 18px;
 }
@@ -397,19 +397,38 @@ tbody tr:hover {
 .admin-list {
   margin-top: 16px;
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .admin-row {
+  display: block;
+  background: #111a2b;
+  border: 1px solid #27334a;
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 13px;
+}
+
+.duo-card-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  background: #111a2b;
-  border: 1px solid #27334a;
-  border-radius: 9px;
-  padding: 10px 12px;
-  font-size: 13px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.duo-card-name { font-size: 15px; font-weight: 850; overflow-wrap: anywhere; }
+.duo-result-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #27334a; }
+.duo-result-fields { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 10px; }
+.duo-result-fields .field { margin: 0; }
+.duo-save-row { display: grid; grid-template-columns: minmax(130px, 220px) 1fr; gap: 12px; align-items: center; margin-top: 10px; }
+.duo-save-row .primary { margin-top: 0; }
+.duo-result-message { color: var(--green); font-size: 12px; min-height: 18px; }
+
+@media (max-width: 650px) {
+  .duo-result-fields { grid-template-columns: 1fr 1fr; }
+  .duo-result-fields .field:first-child { grid-column: 1 / -1; }
+  .duo-save-row { grid-template-columns: 1fr; }
 }
 
 .message {
@@ -553,37 +572,6 @@ tbody tr:hover {
         <button class="primary" id="addDuo">Add duo</button>
       </div>
 
-      <div class="admin-card">
-        <h3>🎮 Enter game result</h3>
-
-        <div class="form-row">
-          <div class="field">
-            <label>GAME</label>
-            <select id="game"></select>
-          </div>
-
-          <div class="field">
-            <label>DUO</label>
-            <select id="duoSelect"></select>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="field">
-            <label>PLACEMENT</label>
-            <input id="placement" type="number" min="1" max="50" placeholder="e.g. 1">
-          </div>
-
-          <div class="field">
-            <label>ELIMINATIONS</label>
-            <input id="kills" type="number" min="0" placeholder="e.g. 8">
-          </div>
-        </div>
-
-        <button class="primary" id="saveResult">Save result</button>
-
-        <div class="message" id="message" aria-live="polite"></div>
-      </div>
 
     </div>
 
@@ -647,6 +635,7 @@ tbody tr:hover {
   }
 
   let isAdmin = false;
+  const selectedGameByDuo = {};
 
   function persist() {
     try {
@@ -674,10 +663,6 @@ tbody tr:hover {
     option.value = value;
     option.textContent = text;
     select.appendChild(option);
-  }
-
-  for (let game = 1; game <= GAMES; game++) {
-    addOption($("game"), String(game), "Game " + game);
   }
 
   $("adminToggle").addEventListener("click", () => {
@@ -738,44 +723,6 @@ tbody tr:hover {
     render();
 
     $("message").textContent = "Duo added successfully.";
-  });
-
-  $("saveResult").addEventListener("click", () => {
-    const game = Number($("game").value);
-    const duoId = $("duoSelect").value;
-
-    const placementText = $("placement").value;
-    const killsText = $("kills").value;
-
-    const placement = Number(placementText);
-    const kills = Number(killsText);
-
-    if (
-      !duoId ||
-      placementText === "" ||
-      killsText === "" ||
-      !Number.isInteger(placement) ||
-      placement < 1 ||
-      placement > 50 ||
-      !Number.isInteger(kills) ||
-      kills < 0
-    ) {
-      alert(
-        "Enter a duo, a placement from 1 to 50, and a non-negative kill count."
-      );
-      return;
-    }
-
-    state.results[game + "_" + duoId] = {
-      placement,
-      kills
-    };
-
-    persist();
-    render();
-
-    $("message").textContent =
-      "Result saved for Game " + game + ".";
   });
 
   function getStats(duo) {
@@ -881,23 +828,6 @@ tbody tr:hover {
       leaderboard.appendChild(row);
     });
 
-    const duoSelect = $("duoSelect");
-    const previousSelection = duoSelect.value;
-
-    duoSelect.replaceChildren();
-
-    state.duos.forEach(duo => {
-      addOption(
-        duoSelect,
-        duo.id,
-        duo.p1 + " / " + duo.p2
-      );
-    });
-
-    if (state.duos.some(duo => duo.id === previousSelection)) {
-      duoSelect.value = previousSelection;
-    }
-
     const duoList = $("duoList");
     duoList.replaceChildren();
 
@@ -912,37 +842,107 @@ tbody tr:hover {
       const row = document.createElement("div");
       row.className = "admin-row";
 
+      const header = document.createElement("div");
+      header.className = "duo-card-head";
       const label = document.createElement("span");
+      label.className = "duo-card-name";
       label.textContent = duo.p1 + " / " + duo.p2;
 
       const deleteButton = document.createElement("button");
       deleteButton.className = "danger";
       deleteButton.textContent = "Remove";
-
       deleteButton.addEventListener("click", () => {
-        const confirmed = confirm(
-          "Remove " + duo.p1 + " / " + duo.p2 +
-          " and all their results?"
-        );
-
+        const confirmed = confirm("Remove " + duo.p1 + " / " + duo.p2 + " and all their results?");
         if (!confirmed) return;
-
-        state.duos = state.duos.filter(
-          item => item.id !== duo.id
-        );
-
+        state.duos = state.duos.filter(item => item.id !== duo.id);
         Object.keys(state.results).forEach(key => {
-          if (key.endsWith("_" + duo.id)) {
-            delete state.results[key];
-          }
+          if (key.endsWith("_" + duo.id)) delete state.results[key];
         });
-
+        delete selectedGameByDuo[duo.id];
         persist();
         render();
       });
+      header.append(label, deleteButton);
 
-      row.append(label, deleteButton);
+      const form = document.createElement("div");
+      form.className = "duo-result-form";
+      const fields = document.createElement("div");
+      fields.className = "duo-result-fields";
+
+      function makeField(labelText, control) {
+        const field = document.createElement("div");
+        field.className = "field";
+        const fieldLabel = document.createElement("label");
+        fieldLabel.textContent = labelText;
+        field.append(fieldLabel, control);
+        return field;
+      }
+
+      const gameSelect = document.createElement("select");
+      for (let game = 1; game <= GAMES; game++) addOption(gameSelect, String(game), "Game " + game);
+      gameSelect.value = String(selectedGameByDuo[duo.id] || 1);
+
+      const placementInput = document.createElement("input");
+      placementInput.type = "number";
+      placementInput.min = "1";
+      placementInput.max = "50";
+      placementInput.placeholder = "e.g. 1";
+
+      const killsInput = document.createElement("input");
+      killsInput.type = "number";
+      killsInput.min = "0";
+      killsInput.placeholder = "e.g. 8";
+
+      fields.append(makeField("GAME", gameSelect), makeField("PLACEMENT", placementInput), makeField("ELIMINATIONS", killsInput));
+
+      const saveRow = document.createElement("div");
+      saveRow.className = "duo-save-row";
+      const saveButton = document.createElement("button");
+      saveButton.className = "primary";
+      saveButton.textContent = "Save result";
+      const message = document.createElement("div");
+      message.className = "duo-result-message";
+      message.setAttribute("aria-live", "polite");
+
+      function loadSelectedGameResult() {
+        const game = Number(gameSelect.value);
+        selectedGameByDuo[duo.id] = game;
+        const result = state.results[game + "_" + duo.id];
+        placementInput.value = result ? result.placement : "";
+        killsInput.value = result ? result.kills : "";
+        message.textContent = result ? "Saved result for Game " + game + "." : "";
+      }
+      gameSelect.addEventListener("change", loadSelectedGameResult);
+
+      saveButton.addEventListener("click", () => {
+        const game = Number(gameSelect.value);
+        const placementText = placementInput.value;
+        const killsText = killsInput.value;
+        const placement = Number(placementText);
+        const kills = Number(killsText);
+        if (placementText === "" || killsText === "" || !Number.isInteger(placement) || placement < 1 || placement > 50 || !Number.isInteger(kills) || kills < 0) {
+          alert("Enter a placement from 1 to 50 and a non-negative elimination count.");
+          return;
+        }
+        state.results[game + "_" + duo.id] = { placement, kills };
+        selectedGameByDuo[duo.id] = game;
+        persist();
+        render();
+        const refreshedCard = Array.from($("duoList").querySelectorAll(".admin-row")).find(card => {
+          const name = card.querySelector(".duo-card-name");
+          return name && name.textContent === duo.p1 + " / " + duo.p2;
+        });
+        if (refreshedCard) {
+          const refreshedMessage = refreshedCard.querySelector(".duo-result-message");
+          if (refreshedMessage) refreshedMessage.textContent = "Result saved for Game " + game + ".";
+        }
+      });
+
+      saveRow.append(saveButton, message);
+      form.append(fields, saveRow);
+      row.append(header, form);
       duoList.appendChild(row);
+      loadSelectedGameResult();
     });
   }
 
